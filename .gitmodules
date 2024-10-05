@@ -1,0 +1,3 @@
+[submodule "src/bash"]
+	path = src/bash
+	url = https://github.com/bminor/bash.git
