@@ -1,3 +1,4 @@
+#include <utils.h>
 #include <readline/history.h>
 #include <readline/readline.h>
 #include <stdint.h>
@@ -8,101 +9,16 @@
 #include <readline/chardefs.h>
 #include <signal.h>
 #include <stdio.h>
-#include <stdlib.h>
+#include <shell.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
 
-extern void ash_setup();
+extern void ash_setup(char *ash_config);
 extern char *ash_readline();
 extern void ash_exit(int err);
-extern char* ash_prompt;
-
-struct CharArray {
-	size_t capacity;
-	size_t count;
-	char *items;
-};
-
-struct Command {
-	size_t capacity;
-	size_t count;
-	char **items;
-};
-
-struct alias {
-	char *name;
-	struct Command cmd;
-};
-
-struct aliases {
-	size_t capacity;
-	size_t count;
-	struct alias *items;
-};
-
-struct aliases aliases = { 0 };
-
-int unalias(char *cmd, struct Command *out)
-{
-	struct Command oc = { 0 };
-	int sz = 0;
-	int cap = 2;
-	for (int i = 0; i < aliases.count; i++) {
-		if (strcmp(cmd, aliases.items[i].name) == 0) {
-			for (int j = 0; j < aliases.items[i].cmd.count; j++) {
-				nob_da_append(&oc,
-					      aliases.items[i].cmd.items[j]);
-			}
-			(*out) = oc;
-			return i;
-		}
-	}
-	nob_da_append(&oc, cmd);
-	(*out) = oc;
-	return -1;
-}
-
-bool unalias_rec(char *cmd, struct Command *out)
-{
-	int *used_aliases = malloc(sizeof(int) * aliases.count);
-	int uasz = 0;
-	struct Command cmd_tmp = { 0 };
-	struct Command outf = { 0 };
-	int amt = 0;
-	bool ret = false;
-	int is_alias = unalias(cmd, &outf);
-	while (is_alias != -1) {
-		ret = true;
-		int br = 0;
-		for (int i = 0; i < uasz; i++) {
-			if (is_alias == used_aliases[i])
-				br = 1;
-		}
-		if (br)
-			break;
-		used_aliases[uasz++] = is_alias;
-		struct Command outfn = { 0 };
-		char *c = strdup(outf.items[0]);
-		int is_alias2 = unalias(c, &outfn);
-		br = 0;
-		for (int i = 0; i < uasz; i++) {
-			if (is_alias2 == used_aliases[i])
-				br = 1;
-		}
-		if (!br) {
-			nob_da_append_many(&cmd_tmp, outfn.items, outfn.count);
-			nob_da_append_many(&cmd_tmp, outf.items + 1,
-					   outf.count - 1);
-		} else {
-			nob_da_append_many(&cmd_tmp, outf.items, outf.count);
-		}
-		outf = cmd_tmp;
-	}
-	(*out) = (struct Command){ 0 };
-	nob_da_append_many(out, outf.items, outf.count);
-	return ret;
-}
+extern char *ash_prompt;
+extern int unalias_rec(char *cmd, struct Command *out);
 
 // Function to split the line into arguments (tokenizing)
 struct Command split_line(char *line)
@@ -116,6 +32,19 @@ struct Command split_line(char *line)
 		nob_da_append(&tokens, token);
 		token = strtok(NULL, " \t\r\n\a");
 	}
+	if (tokens.count != 0) {
+		struct Command alias = { 0 };
+		int isalias = unalias_rec(tokens.items[0], &alias);
+		if (isalias) {
+			struct Command newtoks = { 0 };
+			nob_da_append_many(&newtoks, alias.items, alias.count);
+			nob_da_append_many(&newtoks, tokens.items + 1,
+					   tokens.count - 1);
+			tokens.count = 0;
+			nob_da_append_many(&tokens, newtoks.items,
+					   newtoks.count);
+		}
+	}
 	return tokens;
 }
 
@@ -126,26 +55,15 @@ int execute(struct Command *args)
 		// Command doesn't exist
 		return 1;
 	}
-	struct Command alias = {0};
-	int isalias = unalias_rec(args->items[0], &alias);
-	if (isalias) {
-		struct Command newargs = {0};
-		nob_da_append_many(&newargs, alias.items, alias.count);
-		nob_da_append_many(&newargs, args->items+1, args->count-1);
-		args->count = 0;
-		nob_da_append_many(args, newargs.items, newargs.count);
-	}
-	// int i = 0;
-	// while(args[i] != NULL) {
-	// 	printf("%s\n", args[i]);
-	// 	i++;
-	// }
+
+	args->items[args->count] = NULL;
 
 	if (strcmp(args->items[0], "exit") == 0) {
 		ash_exit(EXIT_SUCCESS);
 	}
 
-	pid_t pid, wpid;
+	pid_t pid;
+	pid_t wpid __attribute__((unused));
 	int status;
 
 	pid = fork(); // Create a child process
@@ -211,26 +129,20 @@ void shell_loop()
 char *conf_file_name = "~/.ashrc";
 int main(int argc, char **argv)
 {
-	char *program = nob_shift_args(&argc, &argv);
+	char __attribute__((unused)) *program = nob_shift_args(&argc, &argv);
 	while (argc > 0) {
 		char *arg = nob_shift_args(&argc, &argv);
+		if (strcmp(arg, "-c") == 0) {
+			printf("%d\n", argc);
+			if (argc > 0) {
+				conf_file_name = nob_shift_args(&argc, &argv);
+				PERR("Filename expected after -c");
+			}
+		}
 	}
 
-	struct alias ls = {0};
-	ls.name = "ls";
-	ls.cmd = (struct Command){0};
-	nob_da_append(&ls.cmd, "ls");
-	nob_da_append(&ls.cmd, "--color=tty");
-	nob_da_append(&aliases, ls);
-	struct alias la = {0};
-	la.name = "la";
-	la.cmd = (struct Command){0};
-	nob_da_append(&la.cmd, "ls");
-	nob_da_append(&la.cmd, "-lAh");
-	nob_da_append(&aliases, la);
-
 	setup_signals();
-	ash_setup();
+	ash_setup(conf_file_name);
 
 	// Run command loop
 	shell_loop();
