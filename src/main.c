@@ -14,8 +14,9 @@
 #include <sys/wait.h>
 
 extern void ash_setup();
-extern char *ash_readline(char *prompt);
+extern char *ash_readline();
 extern void ash_exit(int err);
+extern char* ash_prompt;
 
 struct CharArray {
 	size_t capacity;
@@ -28,85 +29,6 @@ struct Command {
 	size_t count;
 	char **items;
 };
-
-const char *default_prompt = "> ";
-
-char *get_prompt()
-{
-	char *custom = getenv("PROMPT");
-	if (custom)
-		return custom;
-	return (char *)default_prompt;
-}
-
-// Function to split the line into arguments (tokenizing)
-struct Command split_line(char *line)
-{
-	if (line == NULL)
-		ash_exit(EXIT_SUCCESS);
-	struct Command tokens = { 0 };
-	char *token;
-	token = strtok(line, " \t\r\n\a"); // Delimiters: space, tab, newline
-	while (token != NULL) {
-		nob_da_append(&tokens, token);
-		token = strtok(NULL, " \t\r\n\a");
-	}
-	return tokens;
-}
-
-// Function to execute a command
-int execute(struct Command *args)
-{
-	if (args->count == 0) {
-		// Command doesn't exist
-		return 1;
-	}
-
-	// int i = 0;
-	// while(args[i] != NULL) {
-	// 	printf("%s\n", args[i]);
-	// 	i++;
-	// }
-
-	if (strcmp(args->items[0], "exit") == 0) {
-		ash_exit(EXIT_SUCCESS);
-	}
-
-	pid_t pid, wpid;
-	int status;
-
-	pid = fork(); // Create a child process
-	if (pid == 0) {
-		// Child process
-		if (execvp(args->items[0], args->items) == -1) {
-			perror(args->items[0]);
-		}
-		exit(EXIT_FAILURE);
-	} else if (pid < 0) {
-		// Error forking
-		perror("shell");
-	} else {
-		// Parent process
-		do {
-			wpid = waitpid(pid, &status, WUNTRACED);
-		} while (!WIFEXITED(status) && !WIFSIGNALED(status));
-	}
-
-	return 1;
-}
-
-volatile sig_atomic_t sigstat = 0;
-
-static void signal_handler(int sig)
-{
-	switch (sig) {
-	case SIGINT:
-		rl_replace_line("", 1);
-		rl_on_new_line_with_prompt();
-		printf("\n%s", get_prompt());
-		break;
-	}
-}
 
 struct alias {
 	char *name;
@@ -182,6 +104,83 @@ bool unalias_rec(char *cmd, struct Command *out)
 	return ret;
 }
 
+// Function to split the line into arguments (tokenizing)
+struct Command split_line(char *line)
+{
+	if (line == NULL)
+		ash_exit(EXIT_SUCCESS);
+	struct Command tokens = { 0 };
+	char *token;
+	token = strtok(line, " \t\r\n\a"); // Delimiters: space, tab, newline
+	while (token != NULL) {
+		nob_da_append(&tokens, token);
+		token = strtok(NULL, " \t\r\n\a");
+	}
+	return tokens;
+}
+
+// Function to execute a command
+int execute(struct Command *args)
+{
+	if (args->count == 0) {
+		// Command doesn't exist
+		return 1;
+	}
+	struct Command alias = {0};
+	int isalias = unalias_rec(args->items[0], &alias);
+	if (isalias) {
+		struct Command newargs = {0};
+		nob_da_append_many(&newargs, alias.items, alias.count);
+		nob_da_append_many(&newargs, args->items+1, args->count-1);
+		args->count = 0;
+		nob_da_append_many(args, newargs.items, newargs.count);
+	}
+	// int i = 0;
+	// while(args[i] != NULL) {
+	// 	printf("%s\n", args[i]);
+	// 	i++;
+	// }
+
+	if (strcmp(args->items[0], "exit") == 0) {
+		ash_exit(EXIT_SUCCESS);
+	}
+
+	pid_t pid, wpid;
+	int status;
+
+	pid = fork(); // Create a child process
+	if (pid == 0) {
+		// Child process
+		if (execvp(args->items[0], args->items) == -1) {
+			perror(args->items[0]);
+		}
+		exit(EXIT_FAILURE);
+	} else if (pid < 0) {
+		// Error forking
+		perror("shell");
+	} else {
+		// Parent process
+		do {
+			wpid = waitpid(pid, &status, WUNTRACED);
+		} while (!WIFEXITED(status) && !WIFSIGNALED(status));
+	}
+
+	return 1;
+}
+
+volatile sig_atomic_t sigstat = 0;
+
+static void signal_handler(int sig)
+{
+	switch (sig) {
+	case SIGINT:
+		rl_replace_line("", 1);
+		rl_on_new_line_with_prompt();
+		printf("\n%s", ash_prompt);
+		break;
+	}
+}
+
 void setup_signals()
 {
 	struct sigaction new_action, old_action;
@@ -202,7 +201,7 @@ void shell_loop()
 	int status;
 
 	do {
-		line = ash_readline(get_prompt()); // Read input
+		line = ash_readline(); // Read input
 		args = split_line(line); // Parse input
 		status = execute(&args); // Execute command
 		nob_da_free(args);
@@ -216,6 +215,19 @@ int main(int argc, char **argv)
 	while (argc > 0) {
 		char *arg = nob_shift_args(&argc, &argv);
 	}
+
+	struct alias ls = {0};
+	ls.name = "ls";
+	ls.cmd = (struct Command){0};
+	nob_da_append(&ls.cmd, "ls");
+	nob_da_append(&ls.cmd, "--color=tty");
+	nob_da_append(&aliases, ls);
+	struct alias la = {0};
+	la.name = "la";
+	la.cmd = (struct Command){0};
+	nob_da_append(&la.cmd, "ls");
+	nob_da_append(&la.cmd, "-lAh");
+	nob_da_append(&aliases, la);
 
 	setup_signals();
 	ash_setup();

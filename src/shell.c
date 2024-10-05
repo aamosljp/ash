@@ -5,7 +5,17 @@
 
 char *histfile;
 
-extern char* get_prompt();
+const char *default_prompt = "> ";
+
+char* ash_prompt;
+
+char *get_prompt()
+{
+	char *custom = getenv("PROMPT");
+	if (custom)
+		return custom;
+	return (char *)default_prompt;
+}
 
 void ash_setup()
 {
@@ -18,17 +28,18 @@ void ash_setup()
 	strcat(histfile, "/.ashhistory");
 	read_history(histfile);
 	rl_cleanup_after_signal();
+	ash_prompt = get_prompt();
 }
 
 static char* line_read = NULL;
 
-char *ash_readline(char *prompt)
+char *ash_readline()
 {
 	if (line_read) {
 		free(line_read);
 		line_read = NULL;
 	}
-	line_read = readline(prompt);
+	line_read = readline(ash_prompt);
 	if (line_read && *line_read)
 		add_history(line_read);
 	return line_read;
