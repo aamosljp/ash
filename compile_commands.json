@@ -1,0 +1,36 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-ggdb",
+      "-DDEBUG",
+      "-c",
+      "-Iinclude",
+      "-Wall",
+      "-Wextra",
+      "-o",
+      "src/main.o",
+      "src/main.c"
+    ],
+    "directory": "/home/aamos/src/ash",
+    "file": "/home/aamos/src/ash/src/main.c",
+    "output": "/home/aamos/src/ash/src/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-ggdb",
+      "-DDEBUG",
+      "-c",
+      "-Iinclude",
+      "-Wall",
+      "-Wextra",
+      "-o",
+      "src/shell.o",
+      "src/shell.c"
+    ],
+    "directory": "/home/aamos/src/ash",
+    "file": "/home/aamos/src/ash/src/shell.c",
+    "output": "/home/aamos/src/ash/src/shell.o"
+  }
+]
