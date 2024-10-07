@@ -79,14 +79,15 @@ char *histfile;
 
 const char *default_prompt = "> ";
 
-char *ash_prompt;
+extern struct prompt_elem *parse_prompt(char* prompt, int args);
+extern char *prompt_stringify(struct prompt_elem *prompt);
 
 char *get_prompt()
 {
 	char *custom = getenv("PROMPT");
 	if (custom != NULL)
-		return strdup(custom);
-	return strdup(default_prompt);
+		return prompt_stringify(parse_prompt(strdup(custom), 0));
+	return prompt_stringify(parse_prompt(strdup(default_prompt), 0));
 }
 
 char *parse_filename(char *str)
@@ -205,7 +206,6 @@ void ash_setup(char *ash_config)
 	strcat(histfile, "/.ashhistory");
 	read_history(histfile);
 	rl_cleanup_after_signal();
-	ash_prompt = get_prompt();
 	// struct alias ls = { 0 };
 	// ls.name = "ls";
 	// ls.cmd = (struct Command){ 0 };
@@ -228,7 +228,7 @@ char *ash_readline()
 		free(line_read);
 		line_read = NULL;
 	}
-	line_read = readline(ash_prompt);
+	line_read = readline(get_prompt());
 	if (line_read && *line_read)
 		add_history(line_read);
 	return line_read;

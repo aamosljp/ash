@@ -1,3 +1,4 @@
+#include <env.h>
 #include <utils.h>
 #include <readline/history.h>
 #include <readline/readline.h>
@@ -17,8 +18,11 @@
 extern void ash_setup(char *ash_config);
 extern char *ash_readline();
 extern void ash_exit(int err);
-extern char *ash_prompt;
+extern char *get_prompt();
 extern int unalias_rec(char *cmd, struct Command *out);
+extern char *get_dir(char *npath, char *path, int tilde);
+
+int cmd_status;
 
 // Function to split the line into arguments (tokenizing)
 struct Command split_line(char *line)
@@ -64,7 +68,6 @@ int execute(struct Command *args)
 
 	pid_t pid;
 	pid_t wpid __attribute__((unused));
-	int status;
 
 	pid = fork(); // Create a child process
 	if (pid == 0) {
@@ -79,8 +82,8 @@ int execute(struct Command *args)
 	} else {
 		// Parent process
 		do {
-			wpid = waitpid(pid, &status, WUNTRACED);
-		} while (!WIFEXITED(status) && !WIFSIGNALED(status));
+			wpid = waitpid(pid, &cmd_status, WUNTRACED);
+		} while (!WIFEXITED(cmd_status) && !WIFSIGNALED(cmd_status));
 	}
 
 	return 1;
@@ -94,7 +97,7 @@ static void signal_handler(int sig)
 	case SIGINT:
 		rl_replace_line("", 1);
 		rl_on_new_line_with_prompt();
-		printf("\n%s", ash_prompt);
+		printf("\n%s", get_prompt());
 		break;
 	}
 }
